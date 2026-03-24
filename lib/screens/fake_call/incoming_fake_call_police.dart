@@ -1,13 +1,76 @@
 import 'package:flutter/material.dart';
+import 'package:audioplayers/audioplayers.dart';
 
-class IncomingFakeCallPolice extends StatelessWidget {
-  const IncomingFakeCallPolice(
-      {super.key,
-      required String name,
-      required String imagePath,
-      required String callerName,
-      required String callTime,
-      required String ringtone});
+class IncomingFakeCallPolice extends StatefulWidget {
+  final String name;
+  final String imagePath;
+  final String callerName;
+  final String callTime;
+  final String ringtone;
+
+  const IncomingFakeCallPolice({
+    super.key,
+    required this.name,
+    required this.imagePath,
+    required this.callerName,
+    required this.callTime,
+    required this.ringtone,
+  });
+
+  @override
+  State<IncomingFakeCallPolice> createState() => _IncomingFakeCallPoliceState();
+}
+
+class _IncomingFakeCallPoliceState extends State<IncomingFakeCallPolice> {
+  final AudioPlayer _audioPlayer = AudioPlayer();
+
+  @override
+  void initState() {
+    super.initState();
+    _playRingtone();
+  }
+
+  Future<void> _playRingtone() async {
+    String fileName = 'default_ringtone.mp3';
+    switch (widget.ringtone) {
+      case 'Default Ringtone':
+        fileName = 'default_ringtone.mp3';
+        break;
+      case 'Classic Bell':
+        fileName = 'classic_bell.mp3';
+        break;
+      case 'Modern Alert':
+        fileName = 'modern_alert.mp3';
+        break;
+      case 'Exciting Beat':
+        fileName = 'exciting_beat.mp3';
+        break;
+      case 'iPhone Remix':
+        fileName = 'iphone_remix.mp3';
+        break;
+      case 'Soft Melody':
+        fileName = 'soft_melody.mp3';
+        break;
+    }
+
+    try {
+      debugPrint('Attempting to play ringtone: assets/audio/$fileName');
+      AudioCache.instance.prefix = '';
+      await _audioPlayer.setReleaseMode(ReleaseMode.loop);
+      await _audioPlayer.setSource(AssetSource('assets/audio/$fileName'));
+      await _audioPlayer.resume();
+      debugPrint('Playback started successfully');
+    } catch (e) {
+      debugPrint('Error playing ringtone (assets/audio/$fileName): $e');
+    }
+  }
+
+  @override
+  void dispose() {
+    _audioPlayer.stop();
+    _audioPlayer.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -90,7 +153,10 @@ class IncomingFakeCallPolice extends StatelessWidget {
                   _buildCallButton(
                     imagePath: 'images/Group 47.png',
                     label: 'Decline',
-                    onTap: () => Navigator.pop(context),
+                    onTap: () {
+                      _audioPlayer.stop();
+                      Navigator.pop(context);
+                    },
                   ),
                   _buildCallButton(
                     imagePath: 'images/Group 46.png',
