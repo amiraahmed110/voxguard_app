@@ -77,8 +77,11 @@ class _LiveLocationScreenState extends State<LiveLocationScreen> {
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
                     IconButton(
-                      icon: const Icon(Icons.arrow_back_ios,
-                          color: Colors.white, size: 20),
+                      icon: const Icon(
+                        Icons.arrow_back_ios,
+                        color: Colors.white,
+                        size: 20,
+                      ),
                       padding: EdgeInsets.zero,
                       constraints: const BoxConstraints(),
                       onPressed: () => Navigator.pop(context),
@@ -116,12 +119,15 @@ class _LiveLocationScreenState extends State<LiveLocationScreen> {
                             children: [
                               Container(
                                 padding: const EdgeInsets.symmetric(
-                                    horizontal: 20, vertical: 12),
+                                  horizontal: 20,
+                                  vertical: 12,
+                                ),
                                 decoration: BoxDecoration(
                                   color: const Color(0xFFF7F7F7),
                                   borderRadius: BorderRadius.circular(40),
-                                  border:
-                                      Border.all(color: Colors.grey.shade300),
+                                  border: Border.all(
+                                    color: Colors.grey.shade300,
+                                  ),
                                   boxShadow: [
                                     BoxShadow(
                                       color: Colors.black.withOpacity(0.1),
@@ -186,11 +192,11 @@ class _LiveLocationScreenState extends State<LiveLocationScreen> {
                                 child: ShaderMask(
                                   shaderCallback: (bounds) =>
                                       const LinearGradient(
-                                    colors: [
-                                      Color(0xFF8E9EFE),
-                                      Color(0xFFE040FB)
-                                    ],
-                                  ).createShader(bounds),
+                                        colors: [
+                                          Color(0xFF8E9EFE),
+                                          Color(0xFFE040FB),
+                                        ],
+                                      ).createShader(bounds),
                                   child: const Text(
                                     'Safety Notes',
                                     style: TextStyle(
@@ -205,12 +211,15 @@ class _LiveLocationScreenState extends State<LiveLocationScreen> {
                               Container(
                                 height: 120,
                                 padding: const EdgeInsets.symmetric(
-                                    horizontal: 16, vertical: 12),
+                                  horizontal: 16,
+                                  vertical: 12,
+                                ),
                                 decoration: BoxDecoration(
                                   color: const Color(0xFFF2F2F2),
                                   borderRadius: BorderRadius.circular(24),
-                                  border:
-                                      Border.all(color: Colors.grey.shade400),
+                                  border: Border.all(
+                                    color: Colors.grey.shade400,
+                                  ),
                                 ),
                                 child: TextField(
                                   maxLines: null,
@@ -228,23 +237,14 @@ class _LiveLocationScreenState extends State<LiveLocationScreen> {
                               ),
                               const SizedBox(height: 24),
                               Container(
-                                height: 250,
-                                width: double.infinity,
+                                height: 266,
+                                width: 266,
                                 decoration: BoxDecoration(
                                   borderRadius: BorderRadius.circular(24),
                                   color: Colors.blue.shade100,
                                   image: const DecorationImage(
-                                    image: AssetImage('images/Map.jpg'),
+                                    image: AssetImage('images/Map1.png'),
                                     fit: BoxFit.cover,
-                                  ),
-                                ),
-                                child: const Center(
-                                  child: Text(
-                                    'Map View Placeholder',
-                                    style: TextStyle(
-                                      color: Colors.black54,
-                                      fontWeight: FontWeight.bold,
-                                    ),
                                   ),
                                 ),
                               ),
@@ -287,7 +287,8 @@ class _LiveLocationScreenState extends State<LiveLocationScreen> {
                             Navigator.push(
                               context,
                               MaterialPageRoute(
-                                builder: (context) => const ConfirmTrackingScreen(),
+                                builder: (context) =>
+                                    const ConfirmTrackingScreen(),
                               ),
                             );
                           },
