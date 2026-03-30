@@ -1,12 +1,123 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'package:intl_phone_field/intl_phone_field.dart';
 import '../../config/colors.dart';
 import '../../custom_widgets/custom_button.dart';
 import '../../custom_widgets/custom_text_field.dart';
 import '../../custom_widgets/logo_header.dart';
 
-class SignupScreen extends StatelessWidget {
+class SignupScreen extends StatefulWidget {
   const SignupScreen({super.key});
+
+  @override
+  State<SignupScreen> createState() => _SignupScreenState();
+}
+
+class _SignupScreenState extends State<SignupScreen> {
+  final firstNameController = TextEditingController();
+  final lastNameController = TextEditingController();
+  final emailController = TextEditingController();
+  final passwordController = TextEditingController();
+  final confirmPasswordController = TextEditingController();
+  String phoneNumber = "";
+  bool isLoading = false;
+
+  void showSnackBar(String message, {bool isError = true}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: isError ? Colors.redAccent : Colors.green,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  Future<void> registerUser() async {
+   
+    final firstName = firstNameController.text.trim();
+    final lastName = lastNameController.text.trim();
+    final email = emailController.text.trim();
+    final password = passwordController.text;
+    final confirmPassword = confirmPasswordController.text;
+
+    if (firstName.isEmpty || lastName.isEmpty || email.isEmpty || phoneNumber.isEmpty || password.isEmpty) {
+      showSnackBar("Please fill all fields");
+      return;
+    }
+
+    final emailRegex = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$');
+    if (!emailRegex.hasMatch(email)) {
+      showSnackBar("Please enter a valid email address");
+      return;
+    }
+
+    if (password.length < 8) {
+      showSnackBar("Password must be at least 8 characters");
+      return;
+    }
+
+    if (password != confirmPassword) {
+      showSnackBar("Passwords do not match");
+      return;
+    }
+
+    setState(() => isLoading = true);
+
+    try {
+      final response = await http.post(
+        Uri.parse("http://192.168.1.191:8000/api/register"),
+        headers: {
+          "Content-Type": "application/json",
+          "Accept": "application/json",
+        },
+        body: jsonEncode({
+          "first_name": firstName,
+          "last_name": lastName,
+          "email": email,
+          "phone_number": phoneNumber,
+          "password": password,
+          "password_confirmation": confirmPassword
+        }),
+      );
+
+      if (!mounted) return;
+      final data = jsonDecode(response.body);
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        showSnackBar("Account created successfully!", isError: false);
+        Navigator.pushNamed(context, '/confirmed');
+      } 
+      else if (response.statusCode == 422) {
+       
+        String errorMessage = "Registration failed";
+        if (data["errors"] != null) {
+        
+          var firstError = data["errors"].values.first;
+          errorMessage = firstError is List ? firstError.first : firstError.toString();
+        }
+        showSnackBar(errorMessage);
+      } 
+      else {
+        showSnackBar(data["message"] ?? "Something went wrong");
+      }
+    } catch (e) {
+      showSnackBar("Connection Error: Make sure your server is running");
+    } finally {
+      if (mounted) setState(() => isLoading = false);
+    }
+  }
+
+  @override
+  void dispose() {
+    firstNameController.dispose();
+    lastNameController.dispose();
+    emailController.dispose();
+    passwordController.dispose();
+    confirmPasswordController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -25,7 +136,7 @@ class SignupScreen extends StatelessWidget {
         child: SafeArea(
           child: Column(
             children: [
-              const SizedBox(height: 30),
+              const SizedBox(height: 20),
               const AppLogoHeader(),
               Expanded(
                 child: Center(
@@ -35,17 +146,22 @@ class SignupScreen extends StatelessWidget {
                       padding: const EdgeInsets.all(24),
                       margin: const EdgeInsets.symmetric(vertical: 20),
                       decoration: BoxDecoration(
-                        color: Colors.white, 
-                        borderRadius: BorderRadius.circular(30)
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(30),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.05),
+                            blurRadius: 10,
+                          )
+                        ],
                       ),
                       child: Column(
-                        mainAxisSize: MainAxisSize.min,
                         children: [
                           Align(
                             alignment: Alignment.centerLeft,
                             child: IconButton(
-                              onPressed: () => Navigator.pop(context), 
-                              icon: const Icon(Icons.arrow_back)
+                              onPressed: () => Navigator.pop(context),
+                              icon: const Icon(Icons.arrow_back),
                             ),
                           ),
                           ShaderMask(
@@ -53,25 +169,25 @@ class SignupScreen extends StatelessWidget {
                               colors: AppColors.logoGradient,
                             ).createShader(bounds),
                             child: const Text(
-                              "Sign Up", 
-                              style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Colors.white)
+                              "Sign Up",
+                              style: TextStyle(
+                                  fontSize: 32,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white),
                             ),
                           ),
                           const SizedBox(height: 8),
                           Row(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              const Text(
-                                "Already have an account? ",
-                                style: TextStyle(fontSize: 13, color: Colors.black),
-                              ),
+                              const Text("Already have an account? ", style: TextStyle(fontSize: 13)),
                               GestureDetector(
                                 onTap: () => Navigator.pushNamed(context, '/login'),
                                 child: const Text(
                                   "Login",
                                   style: TextStyle(
-                                    fontSize: 13, 
-                                    fontWeight: FontWeight.bold, 
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.bold,
                                     color: AppColors.primaryPurple,
                                   ),
                                 ),
@@ -79,52 +195,63 @@ class SignupScreen extends StatelessWidget {
                             ],
                           ),
                           const SizedBox(height: 20),
-                          const Row(
+                          Row(
                             children: [
-                              Expanded(child: CustomTextField(label: "First Name", hintText: "First Name")),
-                              SizedBox(width: 15),
-                              Expanded(child: CustomTextField(label: "Last Name", hintText: "Last Name")),
+                              Expanded(
+                                child: CustomTextField(
+                                  controller: firstNameController,
+                                  label: "First Name",
+                                  hintText: "First",
+                                ),
+                              ),
+                              const SizedBox(width: 15),
+                              Expanded(
+                                child: CustomTextField(
+                                  controller: lastNameController,
+                                  label: "Last Name",
+                                  hintText: "Last",
+                                ),
+                              ),
                             ],
                           ),
-                          const CustomTextField(label: "Email", hintText: "Enter your email"),
+                          CustomTextField(
+                            controller: emailController,
+                            label: "Email",
+                            hintText: "Enter your email",
+                          ),
                           const Align(
                             alignment: Alignment.centerLeft,
-                            child: Text(
-                              "Phone Number",
-                              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
-                            ),
+                            child: Text("Phone Number", style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
                           ),
                           const SizedBox(height: 8),
                           IntlPhoneField(
                             initialCountryCode: 'EG',
-                            disableLengthCheck: true,
-                            flagsButtonMargin: const EdgeInsets.only(left: 8, right: 15),
-                            dropdownIconPosition: IconPosition.trailing,
+                            onChanged: (phone) => phoneNumber = phone.completeNumber,
                             decoration: InputDecoration(
-                              hintText: '1551471747',
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 15),
                               border: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(15),
-                                borderSide: const BorderSide(color: Color(0xFFE0E0E0)),
                               ),
-                              enabledBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(15),
-                                borderSide: const BorderSide(color: Color(0xFFE0E0E0)),
-                              ),
-                              focusedBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(15),
-                                borderSide: const BorderSide(color: AppColors.buttonBorderBlue, width: 1.5),
-                              ),
-                              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
                             ),
                           ),
-                          const SizedBox(height: 15),
-                          const CustomTextField(label: "Set Password", isPassword: true),
-                          const CustomTextField(label: "Confirm password", isPassword: true),
-                          const SizedBox(height: 30),
-                          CustomButton(
-                            text: "Register", 
-                            onPressed: () => Navigator.pushNamed(context, '/confirmed')
+                          const SizedBox(height: 10),
+                          CustomTextField(
+                            controller: passwordController,
+                            label: "Set Password",
+                            isPassword: true,
                           ),
+                          CustomTextField(
+                            controller: confirmPasswordController,
+                            label: "Confirm Password",
+                            isPassword: true,
+                          ),
+                          const SizedBox(height: 30),
+                          isLoading
+                              ? const CircularProgressIndicator()
+                              : CustomButton(
+                                  text: "Register",
+                                  onPressed: registerUser,
+                                ),
                         ],
                       ),
                     ),

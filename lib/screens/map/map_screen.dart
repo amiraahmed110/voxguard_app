@@ -7,7 +7,6 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
-
 import '../../config/colors.dart'; 
 import 'location_sheets.dart'; 
 import 'manage_safety_places.dart';
@@ -51,7 +50,6 @@ class _FullMapScreenState extends State<FullMapScreen> {
     _determinePosition();
   }
 
-  // --- إدارة البيانات (حفظ واسترجاع) ---
   Future<void> _loadData() async {
     final prefs = await SharedPreferences.getInstance();
     
@@ -102,7 +100,6 @@ class _FullMapScreenState extends State<FullMapScreen> {
     prefs.setString('saved_zones', json.encode(circlesList));
   }
 
-  // --- تحويل الأيقونة لصورة ماركر ---
   Future<BitmapDescriptor> _getBitmapFromIcon(IconData iconData, Color color) async {
     final ui.PictureRecorder pictureRecorder = ui.PictureRecorder();
     final Canvas canvas = Canvas(pictureRecorder);

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
-
+import 'package:dio/dio.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../trust_contacts/add_contact_screen.dart';
+import '../../custom_widgets/custom_button.dart';
 
 class TrustedContactsScreen extends StatefulWidget {
   const TrustedContactsScreen({super.key});
@@ -10,32 +12,48 @@ class TrustedContactsScreen extends StatefulWidget {
 }
 
 class _TrustedContactsScreenState extends State<TrustedContactsScreen> {
-  final List<Map<String, dynamic>> contacts = [
-    {
-      'name': 'Mohamed Adel',
-      'relation': 'Brother',
-      'phone': '01551471747',
-      'status': 'Online',
-      'statusColor': const Color(0xFF4CAF50),
-      'image': 'images/man.jpg',
-    },
-    {
-      'name': 'Adel Mohamed',
-      'relation': 'Dad',
-      'phone': '01551471747',
-      'status': 'Nearby',
-      'statusColor': const Color(0xFFD546F3),
-      'image': 'images/man.jpg',
-    },
-    {
-      'name': 'Mahmoud Ahmed',
-      'relation': 'Friend',
-      'phone': '01551471747',
-      'status': 'offline',
-      'statusColor': Colors.grey,
-      'image': 'images/man.jpg',
-    },
-  ];
+  List<dynamic> contacts = [];
+  bool isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchContacts();
+  }
+
+  Future<void> _fetchContacts() async {
+    if (!mounted) return;
+    setState(() => isLoading = true);
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final String? token = prefs.getString('token');
+
+      var response = await Dio().get(
+        "http://192.168.1.191:8000/api/trusted-contacts",
+        options: Options(
+          headers: {
+            "Accept": "application/json",
+            "Authorization": "Bearer $token",
+          },
+        ),
+      );
+
+      if (mounted) {
+        setState(() {
+         
+          if (response.data is Map && response.data['contacts'] != null) {
+            contacts = response.data['contacts'];
+          } else {
+            contacts = [];
+          }
+          isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() => isLoading = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -43,111 +61,47 @@ class _TrustedContactsScreenState extends State<TrustedContactsScreen> {
       backgroundColor: Colors.white,
       body: Stack(
         children: [
-          // Extended Background Gradient to cover curves
+          
           Container(
             height: 200,
             width: double.infinity,
             decoration: const BoxDecoration(
               gradient: LinearGradient(
-                begin: Alignment.centerLeft,
-                end: Alignment.centerRight,
                 colors: [Color(0xFF8E9EFE), Color(0xFFE040FB)],
               ),
             ),
           ),
           Column(
             children: [
-              // Header content row
-              Container(
-                height: 140,
-                width: double.infinity,
-                padding: const EdgeInsets.only(top: 60, left: 16, right: 16),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    IconButton(
-                      icon: const Icon(Icons.chevron_left,
-                          color: Colors.white, size: 30),
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(),
-                      onPressed: () => Navigator.pop(context),
-                    ),
-                    const SizedBox(width: 8),
-                    const Text(
-                      'Trusted',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 22,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+              _buildHeader(),
               Expanded(
                 child: Container(
-                  width: double.infinity,
                   decoration: const BoxDecoration(
                     color: Colors.white,
-                    borderRadius: BorderRadius.only(
-                      topLeft: Radius.circular(30),
-                      topRight: Radius.circular(30),
-                    ),
+                    borderRadius: BorderRadius.only(topLeft: Radius.circular(30), topRight: Radius.circular(30)),
                   ),
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 20, vertical: 25),
+                  padding: const EdgeInsets.all(20),
                   child: Column(
                     children: [
                       Expanded(
-                        child: ListView.builder(
-                          padding: const EdgeInsets.only(top: 10),
-                          itemCount: contacts.length,
-                          itemBuilder: (context, index) {
-                            final contact = contacts[index];
-                            return _buildContactCard(contact);
-                          },
-                        ),
+                        child: isLoading
+                            ? const Center(child: CircularProgressIndicator())
+                            : contacts.isEmpty
+                                ? const Center(child: Text("No contacts added yet"))
+                                : ListView.builder(
+                                    itemCount: contacts.length,
+                                    itemBuilder: (context, index) => _buildContactCard(contacts[index]),
+                                  ),
                       ),
-                      const SizedBox(height: 20),
-                      Container(
-                        width: double.infinity,
-                        height: 55,
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFCB30E0),
-                          borderRadius: BorderRadius.circular(15),
-                          border: Border.all(color: Colors.blue, width: 1),
-                          boxShadow: [
-                            BoxShadow(
-                              color: const Color(0xFFCB30E0).withOpacity(0.3),
-                              spreadRadius: 1,
-                              blurRadius: 8,
-                              offset: const Offset(0, 4),
-                            ),
-                          ],
-                        ),
-                        child: ElevatedButton(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.transparent,
-                            shadowColor: Colors.transparent,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(15),
-                            ),
-                          ),
-                          onPressed: () {
-                              Navigator.push(
-                              context,
-                             MaterialPageRoute(builder: (context) => const AddContactScreen()),
-                             );
-                          },
-                          child: const Text(
-                            'Add new',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
+                      CustomButton(
+                        text: "Add new",
+                        onPressed: () async {
+                          bool? refresh = await Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (context) => const AddContactScreen()),
+                          );
+                          if (refresh == true) _fetchContacts();
+                        },
                       ),
                     ],
                   ),
@@ -160,100 +114,129 @@ class _TrustedContactsScreenState extends State<TrustedContactsScreen> {
     );
   }
 
-  Widget _buildContactCard(Map<String, dynamic> contact) {
+  Widget _buildHeader() {
     return Container(
-      margin: const EdgeInsets.only(bottom: 16, left: 4, right: 4),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.grey.withOpacity(0.2)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
-            spreadRadius: 1,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
+      height: 140,
+      padding: const EdgeInsets.only(top: 60, left: 16),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Stack(
-            children: [
-              Container(
-                width: 50,
-                height: 65,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(12),
-                  image: DecorationImage(
-                    image: AssetImage(contact['image']),
-                    fit: BoxFit.cover,
-                  ),
-                ),
-              ),
-              Positioned(
-                bottom: -2,
-                right: -2,
-                child: Container(
-                  width: 14,
-                  height: 14,
-                  decoration: BoxDecoration(
-                    color: contact['statusColor'],
-                    shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white, width: 2),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  contact['name'],
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w500,
-                    color: Colors.black,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  contact['relation'],
-                  style: const TextStyle(
-                    fontSize: 14,
-                    color: Colors.grey,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  contact['phone'],
-                  style: const TextStyle(
-                    fontSize: 14,
-                    color: Colors.grey,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          // Status Text
-          Padding(
-            padding: const EdgeInsets.only(top: 8.0),
-            child: Text(
-              contact['status'],
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w400,
-                color: contact['statusColor'],
-              ),
-            ),
-          ),
+          IconButton(icon: const Icon(Icons.chevron_left, color: Colors.white), onPressed: () => Navigator.pop(context)),
+          const Text('Trusted Contacts', style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
         ],
       ),
     );
   }
+
+ Widget _buildContactCard(dynamic contact) {
+  String imageUrl = contact['image'] ?? "";
+  String name = "${contact['first_name'] ?? ''} ${contact['last_name'] ?? ''}".trim();
+  if (name.isEmpty) name = contact['name'] ?? "No Name";
+  
+  String status = (contact['status'] ?? "offline").toLowerCase();
+  
+  Color statusColor = Colors.grey;
+  if (status == "online") statusColor = Colors.green;
+  if (status == "nearby") statusColor = Colors.purple;
+
+  return Container(
+    margin: const EdgeInsets.only(bottom: 16),
+    decoration: BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(20),
+      border: Border.all(color: Colors.grey.shade300), 
+      boxShadow: [
+        BoxShadow(
+          color: Colors.black.withOpacity(0.05),
+          blurRadius: 10,
+          offset: const Offset(0, 4),
+        ),
+      ],
+    ),
+    padding: const EdgeInsets.all(16),
+    child: Row(
+      children: [
+
+        Stack(
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: imageUrl.isNotEmpty
+                  ? Image.network(
+                      imageUrl,
+                      width: 60,
+                      height: 60,
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) => _buildPlaceholder(),
+                    )
+                  : _buildPlaceholder(),
+            ),
+
+            Positioned(
+              right: 2,
+              bottom: 2,
+              child: Container(
+                width: 12,
+                height: 12,
+                decoration: BoxDecoration(
+                  color: statusColor,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Colors.white, width: 2),
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(width: 16),
+        
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                name,
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 18,
+                  color: Colors.black,
+                ),
+              ),
+              Text(
+                contact['relation'] ?? "Relative",
+                style: TextStyle(
+                  color: Colors.grey.shade600,
+                  fontSize: 14,
+                ),
+              ),
+              Text(
+                contact['phone'] ?? "No Phone",
+                style: TextStyle(
+                  color: Colors.grey.shade600,
+                  fontSize: 14,
+                ),
+              ),
+            ],
+          ),
+        ),
+        
+        Text(
+          status[0].toUpperCase() + status.substring(1),
+          style: TextStyle(
+            color: statusColor,
+            fontWeight: FontWeight.bold,
+            fontSize: 16,
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+Widget _buildPlaceholder() {
+  return Container(
+    width: 60,
+    height: 60,
+    color: Colors.grey[200],
+    child: const Icon(Icons.person, color: Colors.grey),
+  );
+}
 }

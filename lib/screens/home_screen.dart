@@ -135,7 +135,7 @@ Widget build(BuildContext context) {
               ),
             ),
             padding: const EdgeInsets.symmetric(horizontal: 0, vertical: 25), 
-            child: ListView( // تحويل الـ Column لـ ListView ليصبح الـ Scroll داخلي
+            child: ListView( 
               padding: EdgeInsets.zero,
               children: [
                 const SizedBox(height: 5), 

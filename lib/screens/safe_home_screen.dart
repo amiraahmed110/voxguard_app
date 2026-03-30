@@ -1,9 +1,9 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:flutter_map/flutter_map.dart'; 
-import 'package:geolocator/geolocator.dart';  
-import 'package:latlong2/latlong.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
+import 'package:google_maps_flutter/google_maps_flutter.dart'; 
 import 'dart:ui' as ui;
 import 'home_screen.dart';
 import 'map/map_screen.dart'; 
@@ -26,7 +26,7 @@ class _SafeHomeScreenState extends State<SafeHomeScreen> with TickerProviderStat
   int _selectedIndex = 0;
   late AnimationController _waveController;
 
-  final MapController _mapController = MapController();
+  late GoogleMapController _googleMapController;
   LatLng _currentLatLng = const LatLng(30.0444, 31.2357); 
   String _locationText = "Locating...";
 
@@ -59,7 +59,9 @@ class _SafeHomeScreenState extends State<SafeHomeScreen> with TickerProviderStat
       setState(() {
         _currentLatLng = LatLng(position.latitude, position.longitude);
       });
-      _mapController.move(_currentLatLng, 15.0);
+      _googleMapController.animateCamera(
+        CameraUpdate.newLatLngZoom(_currentLatLng, 15),
+      );
       _getAddressFromLatLng(position.latitude, position.longitude);
     }
   }
@@ -87,58 +89,54 @@ class _SafeHomeScreenState extends State<SafeHomeScreen> with TickerProviderStat
     super.dispose();
   }
 
- @override
-Widget build(BuildContext context) {
-  return Scaffold(
-    // إزالة اللون السادة القديم
-    body: Container(
-      width: double.infinity,
-      height: double.infinity,
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.centerLeft,
-          end: Alignment.centerRight,
-          colors: [Color(0xFF8E9EFE), Color(0xFFD546F3)],
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Container(
+        width: double.infinity,
+        height: double.infinity,
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.centerLeft,
+            end: Alignment.centerRight,
+            colors: [Color(0xFF8E9EFE), Color(0xFFD546F3)],
+          ),
         ),
+        child: _selectedIndex == 0 ? _buildSafeMainContent() : _pages[_selectedIndex],
       ),
-      child: _selectedIndex == 0 ? _buildSafeMainContent() : _pages[_selectedIndex],
-    ),
-    bottomNavigationBar: _bottomNav(),
-  );
-}
+      bottomNavigationBar: _bottomNav(),
+    );
+  }
 
-  // المحتوى الأساسي لشاشة Safe
   Widget _buildSafeMainContent() {
-    return Column( // شيلنا الـ SingleChildScrollView من هنا
+    return Column(
       children: [
-        const SizedBox(height: 40),
-        _header(),
-        const SizedBox(height: 30),
-        // تحويل الكونتينر الأبيض ليكون Expanded مثل شاشة Contacts
+        const SizedBox(height: 40), 
+        _header(),                  
+        const SizedBox(height: 30), 
         Expanded(
           child: Container(
             width: double.infinity,
             decoration: const BoxDecoration(
-              color: Colors.white, // تغيير اللون للأبيض الصريح
+              color: Colors.white,
               borderRadius: BorderRadius.only(
-                topLeft: Radius.circular(30), // توحيد الحواف لـ 30
+                topLeft: Radius.circular(30),
                 topRight: Radius.circular(30),
               ),
             ),
-            // استخدام Padding داخلي كما في الشاشة الثانية
             padding: const EdgeInsets.symmetric(horizontal: 0, vertical: 25), 
-            child: ListView( // تحويل الـ Column لـ ListView ليصبح الـ Scroll داخلي
+            child: ListView(
               padding: EdgeInsets.zero,
               children: [
-                const SizedBox(height: 5), // مسافة بسيطة من الأعلى
+                const SizedBox(height: 5),
                 _safeButton(),
                 const SizedBox(height: 25),
                 _quickActions(),
                 const SizedBox(height: 30),
                 _safetyStatusCard(),
                 const SizedBox(height: 25),
-                _locationCard(),
-                const SizedBox(height: 90), // مسافة عشان الـ Bottom Nav
+                _locationCard(), 
+                const SizedBox(height: 90),
               ],
             ),
           ),
@@ -146,16 +144,21 @@ Widget build(BuildContext context) {
       ],
     );
   }
-  // الهيدر مع ربط البروفايل
+
   Widget _header() {
-    return Container(
-      height: 110,
-      padding: const EdgeInsets.only(left: 20, right: 20, top: 40, bottom: 15),
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
       child: Row(
         children: [
-          const CircleAvatar(radius: 24, backgroundImage: AssetImage('images/person.png')),
+          const CircleAvatar(
+            radius: 24, 
+            backgroundImage: AssetImage('images/person.png'),
+          ),
           const SizedBox(width: 12),
-          const Text('Hi, Mohamed Adel', style: TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w600)),
+          const Text(
+            'Hi, Mohamed Adel', 
+            style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w600),
+          ),
           const Spacer(),
           GestureDetector(
             onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ProfileScreen())),
@@ -213,15 +216,9 @@ Widget build(BuildContext context) {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          _actionItem('call.png', 'Fake call', () {
-             Navigator.push(context, MaterialPageRoute(builder: (context) => const FakeCallScreen()));
-          }),
-          _actionItem('location.png', 'Share location', () {
-             Navigator.push(context, MaterialPageRoute(builder: (context) => const StartTripScreen()));
-          }),
-          _actionItem('mic.png', 'Voice password', () {
-             Navigator.push(context, MaterialPageRoute(builder: (context) => const VoicePasswordIntroScreen())); 
-          }),
+          _actionItem('call.png', 'Fake call', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const FakeCallScreen()))),
+          _actionItem('location.png', 'Share location', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const StartTripScreen()))),
+          _actionItem('mic.png', 'Voice password', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const VoicePasswordIntroScreen()))),
         ],
       ),
     );
@@ -296,12 +293,11 @@ Widget build(BuildContext context) {
             children: [
               ClipRRect(
                 borderRadius: BorderRadius.circular(26),
-                child: FlutterMap(
-                  mapController: _mapController,
-                  options: MapOptions(initialCenter: _currentLatLng, initialZoom: 15.0, interactionOptions: const InteractionOptions(flags: InteractiveFlag.none)), 
-                  children: [
-                    TileLayer(urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', userAgentPackageName: 'voxGuard'),
-                  ],
+                child: GoogleMap(
+                  initialCameraPosition: CameraPosition(target: _currentLatLng, zoom: 15),
+                  zoomControlsEnabled: false,
+                  myLocationButtonEnabled: false,
+                  onMapCreated: (controller) => _googleMapController = controller,
                 ),
               ),
               Positioned(
