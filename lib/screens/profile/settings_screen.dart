@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../auth/password/update_password_screen.dart';
 import '/screens/device/pair_device_screen.dart';
 import '/screens/profile/language_screen.dart';
 import '/screens/profile/delete_account_screen.dart';
 import '/screens/sos/background_log_screen.dart';
+import '/screens/sos/ai_monitor.dart' show kEmotionDetectionKey;
 import 'profile_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -19,9 +21,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool panicButtonStatus = true;
   bool notificationStatus = true;
   bool voicePasswordStatus = true;
-  bool emotionDetectionStatus = true; 
+  bool emotionDetectionStatus = true;
 
   final Color brandColor = const Color(0xFFCB30E0);
+
+  @override
+  void initState() {
+    super.initState();
+    _loadEmotionDetection();
+  }
+
+  Future<void> _loadEmotionDetection() async {
+    final prefs = await SharedPreferences.getInstance();
+    final value = prefs.getBool(kEmotionDetectionKey) ?? true;
+    if (mounted) setState(() => emotionDetectionStatus = value);
+  }
+
+  Future<void> _setEmotionDetection(bool value) async {
+    setState(() => emotionDetectionStatus = value);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(kEmotionDetectionKey, value);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -158,7 +178,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           'Emotion Detection',
                           hasSwitch: true,
                           currentValue: emotionDetectionStatus,
-                          onChanged: (v) => setState(() => emotionDetectionStatus = v),
+                          onChanged: _setEmotionDetection,
                         ),
                         const Divider(
                           thickness: 1.5,

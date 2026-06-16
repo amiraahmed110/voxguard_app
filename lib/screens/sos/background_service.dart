@@ -178,9 +178,15 @@ void onStart(ServiceInstance service) async {
     }
 
     // بدء تسجيل/تحليل الصوت في الخلفية على شكل مقاطع كل دقيقتين.
+    //
+    // ملاحظة: AudioRecorder.hasPermission() من حزمة record غير موثوق داخل عزلة
+    // الخلفية (يحتاج Activity ليستعلم/يطلب الإذن فيرجع false حتى وإن كان الإذن
+    // ممنوحاً فعلاً). نعتمد بدلاً منه على حالة permission_handler التي تقرأ حالة
+    // النظام الحقيقية.
     if (recordAudio) {
-      try {
-        if (await audioRecorder.hasPermission()) {
+      final bool micGranted = await Permission.microphone.isGranted;
+      if (micGranted) {
+        try {
           audioEnabled = true;
           await startChunk();
           chunkTimer?.cancel();
@@ -189,11 +195,11 @@ void onStart(ServiceInstance service) async {
             (_) => processChunk(restart: true),
           );
           await _log('⏱️ Chunk monitor started (every ${kAiChunkDuration.inMinutes}m).');
-        } else {
-          await _log('⚠️ Microphone permission denied; not recording.');
+        } catch (e) {
+          await _log('❌ Failed to start recording: $e');
         }
-      } catch (e) {
-        await _log('❌ Failed to start recording: $e');
+      } else {
+        await _log('⚠️ Microphone permission denied (OS status); not recording.');
       }
     } else {
       await _log('🔇 record_audio=false; audio capture disabled this session.');

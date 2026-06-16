@@ -2,13 +2,18 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../config/api_config.dart';
 
-/// Length of each monitoring audio chunk: the recorder captures this much audio
-/// before it is handed to the AI pipeline and uploaded to the backend.
+/// Stage-1 listen window: a short clip is continuously transcribed and checked
+/// against the danger dictionary. Cheap, runs constantly.
+const Duration kListenWindow = Duration(seconds: 12);
+
+/// Stage-2 evidence clip: recorded only AFTER a danger keyword is detected,
+/// then passed to the emotion model (and stored as evidence). Heavy, rare.
 const Duration kAiChunkDuration = Duration(minutes: 2);
 
 /// SharedPreferences flag set by the background service while an SOS is active.
@@ -16,21 +21,32 @@ const Duration kAiChunkDuration = Duration(minutes: 2);
 /// fight over the microphone.
 const String kSosActiveKey = 'sos_active';
 
-/// Runs the AI pipeline on a recorded chunk: speech-to-text → backend danger
-/// check → emotion analysis. Returns true when the analysis recommends
-/// triggering an emergency SOS.
-///
-/// Safe to call from any isolate (the foreground UI or the background service).
-Future<bool> analyzeAudioChunk(
+/// SharedPreferences flag for the master "AI Auto Mode" toggle in Settings.
+/// When false, the whole auto-detection pipeline is disabled (manual SOS still
+/// works).
+const String kAiAutoModeKey = 'ai_auto_mode_enabled';
+
+/// SharedPreferences flag for the "Emotion Detection" toggle in Settings.
+/// When false, the emotion model is skipped and a danger-word hit triggers the
+/// SOS directly.
+const String kEmotionDetectionKey = 'emotion_detection_enabled';
+
+/// SharedPreferences key for cached custom zones (shared with the map screen).
+/// Each entry is a JSON object: `{id, name, isDanger, lat, lng, radius}`.
+const String _kCustomZonesKey = 'user_custom_zones_local';
+
+/// Stage 1 — cheap & constant. Transcribes [filePath] (speech-to-text) and
+/// checks the text against the backend danger dictionary. Returns true when a
+/// danger keyword/phrase is found.
+Future<bool> screenForDanger(
   String filePath, {
   required String locationText,
 }) async {
   try {
     final prefs = await SharedPreferences.getInstance();
     final String? token = prefs.getString('auth_token');
-    final String userId = prefs.getString('user_id') ?? '0';
 
-    // 1) Speech-to-text.
+    // Speech-to-text.
     final sttReq = http.MultipartRequest('POST', Uri.parse(ApiConfig.sttUrl));
     sttReq.files.add(await http.MultipartFile.fromPath('audio', filePath));
     final sttResp = await http.Response.fromStream(await sttReq.send());
@@ -39,27 +55,80 @@ Future<bool> analyzeAudioChunk(
       return false;
     }
 
-    // 2) Danger-word check (backend dictionary).
+    // Danger-word dictionary check (backend).
     final dangerResp = await http.post(
       Uri.parse(ApiConfig.dictionaryCheckUrl),
       headers: {'Authorization': 'Bearer $token', 'Accept': 'application/json'},
       body: {'text': text, 'location_text': locationText},
     );
-    if (dangerResp.statusCode != 200 ||
-        jsonDecode(dangerResp.body)['danger_detected'] != true) {
-      return false;
-    }
+    return dangerResp.statusCode == 200 &&
+        jsonDecode(dangerResp.body)['danger_detected'] == true;
+  } catch (e) {
+    debugPrint('[AI-MONITOR] stage-1 screen error: $e');
+    return false;
+  }
+}
 
-    // 3) Emotion / voice-stress analysis.
+/// Stage 2 — heavy & rare. Runs the emotion / voice-stress model on [filePath]
+/// (a ~2-minute clip). This model is the final decision-maker: returns true
+/// when it confirms distress and the SOS should fire.
+Future<bool> confirmEmotion(String filePath) async {
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    final String userId = prefs.getString('user_id') ?? '0';
+
     final emoReq = http.MultipartRequest('POST', Uri.parse(ApiConfig.emotionUrl));
     emoReq.files.add(await http.MultipartFile.fromPath('file', filePath));
     emoReq.fields['user_id'] = userId;
     final emoResp = await http.Response.fromStream(await emoReq.send());
     return jsonDecode(emoResp.body)['trigger_sos'] == true;
   } catch (e) {
-    debugPrint('[AI-MONITOR] analyze error: $e');
+    debugPrint('[AI-MONITOR] stage-2 emotion error: $e');
     return false;
   }
+}
+
+/// Runs the full two-stage pipeline on a single clip: stage 1 (STT + danger
+/// dictionary) and, on a keyword hit, stage 2 (emotion model). Honors the
+/// Emotion Detection toggle — when it is off a danger-word hit triggers
+/// directly. Used by the background evidence loop during an active SOS.
+Future<bool> analyzeAudioChunk(
+  String filePath, {
+  required String locationText,
+}) async {
+  if (!await screenForDanger(filePath, locationText: locationText)) {
+    return false;
+  }
+  final prefs = await SharedPreferences.getInstance();
+  final bool emotionEnabled = prefs.getBool(kEmotionDetectionKey) ?? true;
+  if (!emotionEnabled) {
+    debugPrint('[AI-MONITOR] emotion off; danger words trigger SOS directly.');
+    return true;
+  }
+  return confirmEmotion(filePath);
+}
+
+/// Returns true when [lat]/[lng] falls inside any user-defined SAFE zone (a
+/// custom zone with `isDanger != true`). The AI auto pipeline pauses inside
+/// safe zones; manual SOS is unaffected.
+Future<bool> isInsideSafeZone(double lat, double lng) async {
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    final List<String> raw = prefs.getStringList(_kCustomZonesKey) ?? const [];
+    for (final entry in raw) {
+      final Map<String, dynamic> z = jsonDecode(entry) as Map<String, dynamic>;
+      if (z['isDanger'] == true) continue; // danger zones don't pause the AI
+      final double zlat = (z['lat'] as num).toDouble();
+      final double zlng = (z['lng'] as num).toDouble();
+      final double radius = (z['radius'] as num).toDouble();
+      if (Geolocator.distanceBetween(lat, lng, zlat, zlng) <= radius) {
+        return true;
+      }
+    }
+  } catch (e) {
+    debugPrint('[AI-MONITOR] safe-zone check error: $e');
+  }
+  return false;
 }
 
 /// Best-effort upload of a monitoring recording to the backend so the audio is
