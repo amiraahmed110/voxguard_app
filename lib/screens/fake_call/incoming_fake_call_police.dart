@@ -84,7 +84,7 @@ class _IncomingFakeCallPoliceState extends State<IncomingFakeCallPolice> {
               child: Container(
                 decoration: const BoxDecoration(
                   shape: BoxShape.circle,
-                  color: const Color(0xFFE3EDFA),
+                  color: Color(0xFFE3EDFA),
                 ),
                 child: ClipOval(
                   child: Image.asset(

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 class MonitoringScreen extends StatelessWidget {
-  const MonitoringScreen({Key? key}) : super(key: key);
+  const MonitoringScreen({super.key});
 
   @override
   Widget build(BuildContext context) {

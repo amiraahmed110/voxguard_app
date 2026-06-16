@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../../screens/device/pair_device2_screen.dart';
 
 class PairDeviceScreen extends StatefulWidget {
-  const PairDeviceScreen({Key? key}) : super(key: key);
+  const PairDeviceScreen({super.key});
 
   @override
   _PairDeviceScreenState createState() => _PairDeviceScreenState();

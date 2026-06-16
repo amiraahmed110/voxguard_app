@@ -16,8 +16,7 @@ import 'screens/trust_contacts/contact_added_screen.dart';
 import 'screens/auth/password/forgot_password_screen.dart';
 import 'screens/auth/password/verification_screen.dart';
 
-final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
-    FlutterLocalNotificationsPlugin();
+final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();

@@ -1,15 +1,30 @@
 import 'dart:async';
-import 'dart:convert';
-import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
-import 'package:geolocator/geolocator.dart';
-import 'home_screen.dart';
-import '../../../config/colors.dart';
-import '../../../custom_widgets/custom_button.dart';
-import 'safe_home_screen.dart';
-import 'package:flutter_background_service/flutter_background_service.dart'; 
 
+import 'package:flutter/material.dart';
+
+import '../../config/colors.dart';
+import '../../custom_widgets/custom_button.dart';
+import 'home_screen.dart';
+import 'safe_home_screen.dart';
+import 'sos_service.dart';
+
+/// The manual-SOS grace screen.
+///
+/// After the user presses the SOS button this screen runs a short countdown so
+/// an accidental tap can be cancelled. When the countdown completes it opens an
+/// SOS session on the server, launches the background guard (live location +
+/// audio recording) and hands off to [SafeHomeScreen].
+///
+/// Flow:
+/// ```
+/// countdown ──(reaches 0)──▶ dispatching ──(success)──▶ SafeHomeScreen
+///     │                          │
+///   cancel                     failure
+///     ▼                          ▼
+///  HomeScreen                  error ──(retry)──▶ dispatching
+///                                │
+///                              cancel ─▶ HomeScreen
+/// ```
 class EmergencyScreen extends StatefulWidget {
   const EmergencyScreen({super.key});
 
@@ -17,15 +32,26 @@ class EmergencyScreen extends StatefulWidget {
   State<EmergencyScreen> createState() => _EmergencyScreenState();
 }
 
-class _EmergencyScreenState extends State<EmergencyScreen> {
-  int _start = 3;
-  Timer? _timer;
-  bool _isLocationSharing = true;
-  bool _isAudioRecording = true;
-  bool _isLoading = false;
-  bool _isCancelled = false; 
+/// What the screen is currently doing.
+enum _Phase { countdown, dispatching, error }
 
-  final String baseUrl = "http://192.168.1.191:8000/api/sos";
+class _EmergencyScreenState extends State<EmergencyScreen> {
+  /// Length of the cancel grace period, in seconds.
+  static const int _countdownSeconds = 3;
+
+  final SosService _sosService = const SosService();
+
+  Timer? _countdownTimer;
+  int _secondsRemaining = _countdownSeconds;
+  _Phase _phase = _Phase.countdown;
+
+  // Alert options the user can toggle while the countdown is still running.
+  bool _shareLocation = true;
+  bool _recordAudio = true;
+
+  // Raised when the user aborts so an in-flight dispatch can clean up the
+  // session it may have just created instead of leaving it open on the server.
+  bool _aborted = false;
 
   @override
   void initState() {
@@ -33,133 +59,78 @@ class _EmergencyScreenState extends State<EmergencyScreen> {
     _startCountdown();
   }
 
+  @override
+  void dispose() {
+    _countdownTimer?.cancel();
+    super.dispose();
+  }
+
   void _startCountdown() {
-    _timer = Timer.periodic(const Duration(seconds: 1), (timer) async {
-      if (_start <= 1) {
-        _timer?.cancel();
-
-        setState(() {
-          _start = 0;
-          _isLoading = true;
-        });
-        final Map<String, dynamic>? sosSessionData = await _executeSOSLogic();
-
-        if (!mounted || _isCancelled) {
-          _cleanUpAndStopServiceIfNeeded(sosSessionData?['sos_id'], sosSessionData?['token']);
-          return;
-        }
-        if (sosSessionData != null) {
-          _startBackgroundSecurityService(sosSessionData['sos_id'], sosSessionData['token']);
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(
-              builder: (context) => SafeHomeScreen(
-                sosId: sosSessionData['sos_id'],
-                token: sosSessionData['token'],
-                isLocationSharing: _isLocationSharing,
-                isAudioRecording: _isAudioRecording,
-              ),
-            ),
-          );
-        } else {
-          setState(() => _isLoading = false);
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Connection failed. Please try again.')),
-          );
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (context) => const HomeScreen()),
-          );
-        }
+    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (_secondsRemaining <= 1) {
+        timer.cancel();
+        _dispatchSos();
       } else {
-        setState(() => _start--);
+        setState(() => _secondsRemaining--);
       }
     });
   }
 
-  // ... (الـ imports الخاصة بك كما هي)
+  /// Opens the SOS session, starts the background guard, then routes to the
+  /// active-alert screen. Surfaces an [_Phase.error] state on failure.
+  Future<void> _dispatchSos() async {
+    setState(() => _phase = _Phase.dispatching);
 
-Future<Map<String, dynamic>?> _executeSOSLogic() async {
-  final prefs = await SharedPreferences.getInstance();
-  final String? token = prefs.getString('token') ?? prefs.getString('auth_token');
+    final session = await _sosService.startSession(triggerType: 'manual');
 
-  try {
-    // 1. محاولة الحصول على الموقع
-    Position? position = await Geolocator.getCurrentPosition(
-      desiredAccuracy: LocationAccuracy.high,
-      timeLimit: const Duration(seconds: 5),
-    ).catchError((e) => Geolocator.getLastKnownPosition());
+    // The user aborted (or left the screen) while the request was in flight:
+    // close the freshly-created session so nothing keeps running server-side.
+    if (!mounted || _aborted) {
+      if (session != null) {
+        await _sosService.cancelSession(session);
+      }
+      return;
+    }
 
-    // 2. إرسال الطلب للسيرفر
-    final response = await http.post(
-      Uri.parse('$baseUrl/start'),
-      headers: {
-        'Authorization': 'Bearer $token',
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-      },
-      body: jsonEncode({
-        'latitude': position?.latitude.toString() ?? '0.0',
-        'longitude': position?.longitude.toString() ?? '0.0',
-        'trigger_type': 'manual',
-      }),
+    if (session == null) {
+      setState(() => _phase = _Phase.error);
+      return;
+    }
+
+    await _sosService.startBackgroundGuard(
+      session: session,
+      shareLocation: _shareLocation,
+      recordAudio: _recordAudio,
     );
 
-    // 3. كشف سبب الفشل إذا حدث
-    if (response.statusCode == 200 || response.statusCode == 201) {
-      final data = jsonDecode(response.body);
-      await prefs.setInt('current_sos_id', data['sos_id']);
-      return {'sos_id': data['sos_id'], 'token': token};
-    } else {
-      debugPrint("❌ Server Error: ${response.statusCode} - ${response.body}");
-    }
-  } catch (e) {
-    debugPrint("❌ Exception: $e");
-  }
-  return null;
-}  
-  void _startBackgroundSecurityService(int sosId, String token) async {
-    try {
-      final service = FlutterBackgroundService();
-      
-      bool isStarted = await service.startService();
-      print("📡 [Service] startService invoked, status: $isStarted");
-
-      await Future.delayed(const Duration(milliseconds: 800));
-
-      service.invoke("startSOS", {
-        "sos_id": sosId,
-        "token": token,
-        "share_location": _isLocationSharing,
-        "record_audio": _isAudioRecording
-      });
-      
-      debugPrint("🚀 VoxGuard Background Security Service Configured & Payload Sent for SOS ID: $sosId");
-    } catch (e) {
-      debugPrint("Error starting background service: $e");
-    }
+    if (!mounted) return;
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(
+        builder: (_) => SafeHomeScreen(
+          sosId: session.sosId,
+          token: session.token,
+          isLocationSharing: _shareLocation,
+          isAudioRecording: _recordAudio,
+        ),
+      ),
+    );
   }
 
-  // 🌟 دالة لتنظيف الجلسة برمجياً إذا تم إلغاء الطوارئ في نفس ثانية استجابة السيرفر
-  void _cleanUpAndStopServiceIfNeeded(int? sosId, String? token) async {
-    if (sosId != null && token != null) {
-      try {
-        // إعلام السيرفر بإغلاق هذه الجلسة فوراً لأنها ألغيت
-        await http.post(
-          Uri.parse("$baseUrl/$sosId/safe"),
-          headers: {'Authorization': 'Bearer $token', 'Accept': 'application/json'},
-        );
-      } catch (e) {
-        debugPrint("Error cleaning up cancelled remote session: $e");
-      }
-    }
+  /// Aborts the alert and returns home. Safe to call in any phase.
+  void _abort() {
+    _countdownTimer?.cancel();
+    _aborted = true;
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (_) => const HomeScreen()),
+    );
   }
 
-  @override
-  void dispose() {
-    _timer?.cancel(); 
-    super.dispose();
-  }
+  /// Retries dispatch after a failure (the grace period is not repeated).
+  void _retry() => _dispatchSos();
+
+  // --- UI ------------------------------------------------------------------
 
   @override
   Widget build(BuildContext context) {
@@ -170,61 +141,183 @@ Future<Map<String, dynamic>?> _executeSOSLogic() async {
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [AppColors.bgBlueLight, AppColors.bgPurpleLight, Colors.white],
+            colors: [
+              AppColors.bgBlueLight,
+              AppColors.bgPurpleLight,
+              Colors.white,
+            ],
             stops: [0.0, 0.3, 0.7],
           ),
         ),
-        child: Column(
-          children: [
-            const Spacer(flex: 3),
-            _isLoading
-                ? const CircularProgressIndicator(color: AppColors.primaryPurple)
-                : Text('$_start', style: const TextStyle(fontSize: 180, fontWeight: FontWeight.w900, color: AppColors.primaryPurple)),
-            const SizedBox(height: 10),
-            const Text('SOS Mode Activated', style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: AppColors.primaryPurple)),
-            const SizedBox(height: 8),
-            const Text('Sending Alerts to Emergency Contacts', style: TextStyle(fontSize: 16, color: Colors.black45)),
-            const Spacer(),
-            _buildActionCard(Icons.location_on, 'Share live Location', _isLocationSharing, (val) => setState(() => _isLocationSharing = val)),
-            const SizedBox(height: 16),
-            _buildActionCard(Icons.mic_rounded, 'Recording Audio', _isAudioRecording, (val) => setState(() => _isAudioRecording = val)),
-            const Spacer(flex: 2),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 50),
-              child: CustomButton(
-                text: 'Cancel SOS',
-                onPressed: () {
-                  _timer?.cancel();
-                  setState(() => _isCancelled = true); // رفع علم الإلغاء فوراً
-                  Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const HomeScreen()));
-                },
+        child: SafeArea(
+          child: Column(
+            children: [
+              const Spacer(flex: 3),
+              _indicator(),
+              const SizedBox(height: 10),
+              Text(
+                _title,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 26,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.primaryPurple,
+                ),
               ),
-            ),
-          ],
+              const SizedBox(height: 8),
+              Text(
+                _subtitle,
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 16, color: Colors.black45),
+              ),
+              const Spacer(),
+              _ActionCard(
+                icon: Icons.location_on,
+                label: 'Share live location',
+                value: _shareLocation,
+                onChanged: _canEditOptions
+                    ? (value) => setState(() => _shareLocation = value)
+                    : null,
+              ),
+              const SizedBox(height: 16),
+              _ActionCard(
+                icon: Icons.mic_rounded,
+                label: 'Record audio',
+                value: _recordAudio,
+                onChanged: _canEditOptions
+                    ? (value) => setState(() => _recordAudio = value)
+                    : null,
+              ),
+              const Spacer(flex: 2),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 50),
+                child: _actions(),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildActionCard(IconData icon, String title, bool value, Function(bool) onChanged) {
+  /// Options can only be changed while the countdown is still running.
+  bool get _canEditOptions => _phase == _Phase.countdown;
+
+  String get _title => switch (_phase) {
+        _Phase.countdown => 'SOS Mode Activated',
+        _Phase.dispatching => 'Sending SOS…',
+        _Phase.error => "Couldn't send SOS",
+      };
+
+  String get _subtitle => switch (_phase) {
+        _Phase.countdown => 'Sending alerts to your emergency contacts',
+        _Phase.dispatching => 'Contacting your emergency contacts',
+        _Phase.error => 'Check your connection and try again',
+      };
+
+  /// The large central status element: the countdown number, a spinner while
+  /// dispatching, or an error glyph.
+  Widget _indicator() {
+    switch (_phase) {
+      case _Phase.countdown:
+        return Text(
+          '$_secondsRemaining',
+          style: const TextStyle(
+            fontSize: 180,
+            fontWeight: FontWeight.w900,
+            color: AppColors.primaryPurple,
+          ),
+        );
+      case _Phase.dispatching:
+        return const SizedBox(
+          height: 100,
+          child: Center(
+            child: CircularProgressIndicator(color: AppColors.primaryPurple),
+          ),
+        );
+      case _Phase.error:
+        return const SizedBox(
+          height: 100,
+          child: Icon(
+            Icons.error_outline_rounded,
+            size: 90,
+            color: AppColors.primaryPurple,
+          ),
+        );
+    }
+  }
+
+  Widget _actions() {
+    if (_phase == _Phase.error) {
+      return Column(
+        children: [
+          CustomButton(text: 'Try Again', onPressed: _retry),
+          const SizedBox(height: 8),
+          TextButton(
+            onPressed: _abort,
+            child: const Text(
+              'Back to Home',
+              style: TextStyle(color: Colors.black54),
+            ),
+          ),
+        ],
+      );
+    }
+
+    // Countdown and dispatching share a single cancel action.
+    return CustomButton(text: 'Cancel SOS', onPressed: _abort);
+  }
+}
+
+/// A pill-shaped toggle row for an alert option (live location / audio).
+/// A `null` [onChanged] renders the switch as disabled.
+class _ActionCard extends StatelessWidget {
+  const _ActionCard({
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.onChanged,
+  });
+
+  final IconData icon;
+  final String label;
+  final bool value;
+  final ValueChanged<bool>? onChanged;
+
+  @override
+  Widget build(BuildContext context) {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 25),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: Colors.white, 
-        borderRadius: BorderRadius.circular(40), 
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10)],
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(40),
+        boxShadow: [
+          BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 10),
+        ],
       ),
       child: Row(
         children: [
           Container(
-            padding: const EdgeInsets.all(8), 
-            decoration: BoxDecoration(color: AppColors.primaryPurple.withOpacity(0.1), shape: BoxShape.circle), 
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: AppColors.primaryPurple.withValues(alpha: 0.1),
+              shape: BoxShape.circle,
+            ),
             child: Icon(icon, color: AppColors.primaryPurple, size: 24),
           ),
           const SizedBox(width: 15),
-          Expanded(child: Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 17))),
-          Switch(value: value, onChanged: onChanged, activeTrackColor: AppColors.primaryPurple),
+          Expanded(
+            child: Text(
+              label,
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 17),
+            ),
+          ),
+          Switch(
+            value: value,
+            onChanged: onChanged,
+            activeTrackColor: AppColors.primaryPurple,
+          ),
         ],
       ),
     );

@@ -6,7 +6,7 @@ import '../sos/emergency_screen.dart';
 class AreYouOkayScreen extends StatefulWidget {
   final bool testMode;
 
-  const AreYouOkayScreen({Key? key, this.testMode = false}) : super(key: key);
+  const AreYouOkayScreen({super.key, this.testMode = false});
 
   @override
   _AreYouOkayScreenState createState() => _AreYouOkayScreenState();
@@ -223,11 +223,10 @@ class _ActionGradientButton extends StatelessWidget {
   final List<Color>? colors;
 
   const _ActionGradientButton({
-    Key? key,
     required this.text,
     required this.onPressed,
     this.colors,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

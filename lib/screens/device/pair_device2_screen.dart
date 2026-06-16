@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../safety/monitoring_screen.dart';
 
 class PairDevice2Screen extends StatefulWidget {
-  const PairDevice2Screen({Key? key}) : super(key: key);
+  const PairDevice2Screen({super.key});
 
   @override
   _PairDevice2ScreenState createState() => _PairDevice2ScreenState();

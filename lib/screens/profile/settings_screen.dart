@@ -247,7 +247,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ? const Icon(Icons.arrow_forward_ios, size: 14, color: Colors.grey)
             : (hasSwitch
                 ? CupertinoSwitch(
-                    activeColor: brandColor,
+                    activeTrackColor: brandColor,
                     value: currentValue,
                     onChanged: onChanged,
                   )

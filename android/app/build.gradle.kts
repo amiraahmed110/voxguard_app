@@ -8,7 +8,7 @@ plugins {
 android {
     namespace = "com.example.vox_guard"
     compileSdk = flutter.compileSdkVersion
-    ndkVersion = flutter.ndkVersion
+    ndkVersion = "29.0.14206865"
 
     compileOptions {
         // تفعيل الـ Desugaring بشكل رسمي لتوافق المكاتب الحديثة

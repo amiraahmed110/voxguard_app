@@ -55,8 +55,15 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Future<void> loginUser() async {
     if (emailController.text.trim().isEmpty || passwordController.text.isEmpty) {
-      _showMessage("Please fill all fields");
-      return;
+      //  TODO: Remove this after testing
+      // _showMessage("Please fill all fields");
+      // return;
+
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('user_id', "110010100");
+      await prefs.setString('user_name', "Abdelmonem Rabea");
+      await prefs.setString('user_image', "https://dreampfp.com/wp-content/uploads/2026/05/funny-profile-picture-ideas-1.webp");
+      Navigator.pushNamedAndRemoveUntil(context, '/home', (route) => false);
     }
 
     setState(() => isLoading = true);

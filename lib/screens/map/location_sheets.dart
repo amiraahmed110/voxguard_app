@@ -112,7 +112,7 @@ class LocationSheets {
                         const Text("Notify Trust contacts on Entry", style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500)),
                         Switch(
                           value: _notifyContacts,
-                          activeColor: AppColors.primaryPurple,
+                          activeThumbColor: AppColors.primaryPurple,
                           onChanged: (val) => setModalState(() => _notifyContacts = val),
                         ),
                       ],
